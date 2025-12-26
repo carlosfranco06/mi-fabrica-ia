@@ -16,8 +16,14 @@ from typing import Optional, Dict
 from dataclasses import dataclass, asdict
 from groq import Groq
 import pandas as pd
-from reportlab.platypus import SimpleDocTemplate, Paragraph
-from reportlab.lib.styles import getSampleStyleSheet
+# PDF opcional: reportlab no viene instalado por defecto en Streamlit Cloud
+# Se importa de forma segura para evitar crash
+try:
+    from reportlab.platypus import SimpleDocTemplate, Paragraph
+    from reportlab.lib.styles import getSampleStyleSheet
+    REPORTLAB_OK = True
+except ModuleNotFoundError:
+    REPORTLAB_OK = False
 
 # ==========================================================
 # CONFIGURACIÓN GENERAL
