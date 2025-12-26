@@ -1,78 +1,156 @@
 import streamlit as st
 import json
+from typing import Optional, Dict
+from dataclasses import dataclass
 from groq import Groq
 
-# 1. Configuración de la App
-st.set_page_config(page_title="Ferretería IA Pro", page_icon="🏗️", layout="centered")
+# ==========================================================
+# CONFIGURACIÓN GENERAL
+# ==========================================================
+st.set_page_config(
+    page_title="Ferretería IA Pro+",
+    page_icon="🏗️",
+    layout="centered"
+)
 
-# 2. Conexión con la IA (Configura tu API Key en los secretos de Streamlit)
-# Para probar localmente puedes poner: client = Groq(api_key="TU_KEY_AQUI")
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-def extraer_datos_ia(mensaje_usuario):
-    prompt = f"""
-    Eres un extractor de datos técnico. Analiza el mensaje: "{mensaje_usuario}"
-    Extrae: largo (m), ancho (m), espesor (cm) y uso (ligero/pesado).
-    Responde ÚNICAMENTE en formato JSON. Si falta un dato, pon null.
-    Ejemplo: {{"largo": 5, "ancho": 2, "espesor": 10, "uso": "pesado"}}
+# ==========================================================
+# MODELOS DE DATOS (FUENTE DE VERDAD)
+# ==========================================================
+@dataclass
+class ProyectoConcreto:
+    largo: Optional[float]
+    ancho: Optional[float]
+    espesor_cm: Optional[float]
+    uso: Optional[str]  # ligero / estructural / industrial
+
+# ==========================================================
+# EXTRACCIÓN DE DATOS CON IA (ROBUSTA Y CONTROLADA)
+# ==========================================================
+def extraer_datos_ia(mensaje_usuario: str) -> ProyectoConcreto:
     """
-    
+    Extrae dimensiones y tipo de uso SIN inventar valores.
+    Si no existen datos claros → null.
+    """
+    prompt = f"""
+    Actúas como un analista técnico de obras civiles.
+    Analiza el texto del usuario y extrae:
+    - largo (m)
+    - ancho (m)
+    - espesor_cm (cm)
+    - uso (ligero, estructural, industrial)
+
+    Reglas estrictas:
+    - NO infieras datos que no estén explícitos.
+    - Si un dato no aparece, devuelve null.
+    - Responde SOLO en JSON válido.
+
+    Texto: "{mensaje_usuario}"
+
+    Ejemplo:
+    {{
+      "largo": 6,
+      "ancho": 4,
+      "espesor_cm": 12,
+      "uso": "industrial"
+    }}
+    """
+
     completion = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "system", "content": prompt}],
         response_format={"type": "json_object"}
     )
-    return json.loads(completion.choices[0].message.content)
 
-def calcular_presupuesto(datos):
-    largo = datos['largo']
-    ancho = datos['ancho']
-    espesor = datos['espesor']
-    uso = datos['uso'] or "ligero" # Default por seguridad
-    
-    volumen = largo * ancho * (espesor / 100)
-    sacos = round(volumen * 10) if uso == "pesado" else round(volumen * 7)
-    arena = round(volumen * 0.5, 2)
-    total = sacos * 15 # Precio por saco
-    
-    return {"sacos": sacos, "arena": arena, "total": total}
+    data = json.loads(completion.choices[0].message.content)
 
-# --- INTERFAZ DE USUARIO PROFESIONAL ---
-st.title("🏗️ Asesor Técnico de Ferretería")
-st.markdown("Genera presupuestos precisos mediante lenguaje natural.")
+    return ProyectoConcreto(**data)
 
-user_input = st.text_input("Describe tu proyecto:", placeholder="Ej: Quiero un piso de 6x4 metros con 12cm de grosor para un camión")
+# ==========================================================
+# VALIDACIONES PROFESIONALES
+# ==========================================================
+def validar_proyecto(p: ProyectoConcreto) -> list:
+    faltantes = []
+    if p.largo is None:
+        faltantes.append("largo")
+    if p.ancho is None:
+        faltantes.append("ancho")
+    if p.espesor_cm is None:
+        faltantes.append("espesor")
+    return faltantes
+
+# ==========================================================
+# CÁLCULOS AVANZADOS DE CONCRETO
+# ==========================================================
+def calcular_materiales(p: ProyectoConcreto) -> Dict:
+    """
+    Fórmulas basadas en práctica real:
+    - Dosificación según uso
+    - Factor de desperdicio
+    """
+    volumen = p.largo * p.ancho * (p.espesor_cm / 100)
+    desperdicio = 1.07  # 7%
+
+    if p.uso == "industrial":
+        sacos_m3 = 9.5
+    elif p.uso == "estructural":
+        sacos_m3 = 8
+    else:
+        sacos_m3 = 6.5
+
+    sacos = round(volumen * sacos_m3 * desperdicio)
+    arena_m3 = round(volumen * 0.55 * desperdicio, 2)
+    grava_m3 = round(volumen * 0.75 * desperdicio, 2)
+
+    precio_saco = 15
+
+    return {
+        "volumen_m3": round(volumen, 2),
+        "cemento_sacos": sacos,
+        "arena_m3": arena_m3,
+        "grava_m3": grava_m3,
+        "costo_estimado": sacos * precio_saco
+    }
+
+# ==========================================================
+# INTERFAZ STREAMLIT
+# ==========================================================
+st.title("🏗️ Asesor Técnico de Ferretería – IA Pro+")
+st.markdown("Presupuestos de obra precisos, sin suposiciones ni errores técnicos.")
+
+user_input = st.text_input(
+    "Describe tu proyecto:",
+    placeholder="Ej: Losa de 8x5 metros, 15 cm de espesor para uso estructural"
+)
 
 if user_input:
-    with st.spinner("IA analizando especificaciones técnicas..."):
+    with st.spinner("Analizando especificaciones técnicas..."):
         try:
-            # Paso 1: Extracción real con IA
-            datos = extraer_datos_ia(user_input)
-            
-            # Paso 2: Validación de datos nulos
-            faltantes = [k for k, v in datos.items() if v is None and k != 'uso']
-            
-            if faltantes:
-                st.warning(f"🔎 Me faltan algunos detalles para ser preciso: **{', '.join(faltantes)}**. ¿Podrías indicarlos?")
-            else:
-                # Paso 3: Cálculo y Visualización
-                res = calcular_presupuesto(datos)
-                
-                st.success("### ✅ Presupuesto Técnico Generado")
-                
-                # Diseño de tarjetas profesionales
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Cemento", f"{res['sacos']} sacos")
-                c2.metric("Arena", f"{res['arena']} m3")
-                c3.metric("Total Est.", f"${res['total']}")
-                
-                # Resumen técnico para el ferretero
-                with st.expander("Ver detalles técnicos del cálculo"):
-                    st.write(f"- **Área total:** {datos['largo'] * datos['ancho']} m2")
-                    st.write(f"- **Espesor:** {datos['espesor']} cm")
-                    st.write(f"- **Resistencia:** Uso {datos['uso']}")
+            proyecto = extraer_datos_ia(user_input)
+            faltantes = validar_proyecto(proyecto)
 
-                st.button("📲 Enviar presupuesto a mi WhatsApp")
-                
-        except Exception as e:
-            st.error("Hubo un error al conectar con el cerebro de IA. Revisa tu API Key.")
+            if faltantes:
+                st.warning(
+                    f"Faltan datos críticos para continuar: **{', '.join(faltantes)}**. "
+                    "Por favor indícalos explícitamente."
+                )
+            else:
+                resultado = calcular_materiales(proyecto)
+
+                st.success("### ✅ Cálculo técnico completado")
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Cemento", f"{resultado['cemento_sacos']} sacos")
+                c2.metric("Arena", f"{resultado['arena_m3']} m³")
+                c3.metric("Grava", f"{resultado['grava_m3']} m³")
+
+                st.metric("Costo estimado de cemento", f"${resultado['costo_estimado']}")
+
+                with st.expander("Detalle técnico"):
+                    st.write(f"- Volumen total: {resultado['volumen_m3']} m³")
+                    st.write(f"- Uso declarado: {proyecto.uso}")
+                    st.write("- Incluye 7% de desperdicio")
+
+        except Exception:
+            st.error("Error al procesar la solicitud. Verifica la configuración del sistema.")
